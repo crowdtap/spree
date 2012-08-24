@@ -37,27 +37,33 @@ class InventoryUnit < ActiveRecord::Base
   # manages both variant.count_on_hand and inventory unit creation
   #
   def self.increase(order, variant, quantity)
-    back_order = determine_backorder(order, variant, quantity)
-    sold = quantity - back_order
+    transaction do
+      variant.lock!
+      back_order = determine_backorder(order, variant, quantity)
+      sold = quantity - back_order
 
-    #set on_hand if configured
-    if Spree::Config[:track_inventory_levels]
-      variant.decrement!(:count_on_hand, quantity)
-    end
+      #set on_hand if configured
+      if Spree::Config[:track_inventory_levels]
+        variant.decrement!(:count_on_hand, quantity)
+      end
 
-    #create units if configured
-    if Spree::Config[:create_inventory_units]
-      create_units(order, variant, sold, back_order)
+      #create units if configured
+      if Spree::Config[:create_inventory_units]
+        create_units(order, variant, sold, back_order)
+      end
     end
   end
 
   def self.decrease(order, variant, quantity)
-    if Spree::Config[:track_inventory_levels]
-       variant.increment!(:count_on_hand, quantity)
-    end
+    transaction do
+      variant.lock!
+      if Spree::Config[:track_inventory_levels]
+        variant.increment!(:count_on_hand, quantity)
+      end
 
-    if Spree::Config[:create_inventory_units]
-      destroy_units(order, variant, quantity)
+      if Spree::Config[:create_inventory_units]
+        destroy_units(order, variant, quantity)
+      end
     end
   end
 
